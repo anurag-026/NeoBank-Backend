@@ -5,8 +5,8 @@ spring:
     name: config-server
   security:
     user:
-      name: YOUR_CONFIG_USERNAME
-      password: YOUR_CONFIG_PASSWORD
+      name: configadmin
+      password: config@123
   cloud:
     config:
       server:
@@ -23,3 +23,7 @@ management:
         - health
         - info
         - metrics
+        - prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}

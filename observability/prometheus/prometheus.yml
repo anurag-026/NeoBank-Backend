@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: neobank-services
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - config-server:8888
+          - eureka-server:8761
+          - auth-service:9000
+          - customer-service:8082
+          - account-service:8083
+          - transaction-service:8084
+          - api-gateway:8080
+
+  - job_name: tempo
+    static_configs:
+      - targets: ["tempo:3200"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

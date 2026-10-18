@@ -19,6 +19,8 @@ public class SecurityConfig {
 		System.out.println("this is SecurityWebFilterChain of securityConfig class");
 		return http.csrf(ServerHttpSecurity.CsrfSpec::disable)
 				.authorizeExchange(auth -> auth.pathMatchers("/public/**").permitAll()
+						.pathMatchers("/actuator/**", "/swagger-ui.html", "/swagger-ui/**", "/webjars/**",
+								"/v3/api-docs/**", "/docs/**").permitAll()
 						.pathMatchers("/kyc/callback").permitAll()
 						.pathMatchers("/api/admin/**").hasRole("ADMIN").anyExchange().authenticated())
 				 .oauth2ResourceServer(oauth -> oauth.jwt(jwt ->

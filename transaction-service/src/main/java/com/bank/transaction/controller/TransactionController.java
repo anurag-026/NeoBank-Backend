@@ -16,20 +16,26 @@ import com.bank.transaction.enumrator.TransactionType;
 import com.bank.transaction.repository.TransactionRepository;
 import com.bank.transaction.service.TransactionService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/transactions")
 @RequiredArgsConstructor
+@Tag(name = "Transactions", description = "Credit/debit processing and reversals")
 public class TransactionController {
 private final TransactionService service;
 private final TransactionRepository repo;
+@Operation(summary = "Process a credit or debit", description = "Requires the TRANSFER_MONEY authority. "
+		+ "Runs fraud checks and is idempotent per request.")
 @PreAuthorize("hasAuthority('TRANSFER_MONEY')")
 @PostMapping
 public TransactionResponse transact(@RequestBody TransactionRequest request, HttpServletRequest httpRequest) {
 	return service.process(request, httpRequest.getRemoteAddr(), httpRequest.getHeader("X-Device-Id"));
 }
+@Operation(summary = "Reverse a successful transaction", description = "Posts the opposite entry for the same amount")
 @PostMapping("/reverse/{txnId}")
 public ResponseEntity<?> reverse(@PathVariable String txnId){
 	Transaction txn = repo.findByTxnId(txnId).orElseThrow(()-> new RuntimeException("txn not found"));

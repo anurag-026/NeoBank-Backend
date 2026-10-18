@@ -1,3 +1,5 @@
+server:
+  port: 8080
 spring:
   application:
     name: api-gateway
@@ -8,5 +10,49 @@ spring:
     config:
       username: configadmin
       password: config@123
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://auth-service:9000/oauth2/jwks
+  data:
+    redis:
+      host: redis
+      port: 6379
   profiles:
     active: dev
+  reactor:
+    context-propagation: auto
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACING_ENDPOINT:http://tempo:4318/v1/traces}
+springdoc:
+  swagger-ui:
+    urls-primary-name: account-service
+    urls:
+    - name: auth-service
+      url: /docs/auth/v3/api-docs
+    - name: customer-service
+      url: /docs/customer/v3/api-docs
+    - name: account-service
+      url: /docs/account/v3/api-docs
+    - name: transaction-service
+      url: /docs/transaction/v3/api-docs

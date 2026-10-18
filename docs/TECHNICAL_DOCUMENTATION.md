@@ -7,8 +7,22 @@ Organized by module. Line numbers refer to the workspace state at documentation 
 `banking-system-parent/pom.xml` manages:
 
 - Java 21, Spring Boot 3.4.10, Spring Cloud 2024.0.0
-- Lombok, PostgreSQL driver, JJWT, Bouncy Castle versions
-- Modules list includes typo `../customer-server` (directory is `customer-service`)
+- Lombok, PostgreSQL driver, JJWT, Bouncy Castle, springdoc-openapi (`springdoc.version`) versions
+- Modules list for all seven services
+
+## Cross-cutting: API docs and observability
+
+Every domain service (auth, customer, account, transaction) and the gateway include:
+
+| Dependency | Purpose |
+|------------|---------|
+| `spring-boot-starter-actuator` | Health / metrics endpoints |
+| `micrometer-registry-prometheus` | `/actuator/prometheus` |
+| `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` | Tracing → Tempo over OTLP |
+| `springdoc-openapi-starter-webmvc-ui` (`webflux-ui` on gateway) | OpenAPI spec + Swagger UI |
+| `feign-micrometer` (account, transaction) | Trace propagation on Feign calls |
+
+Per-service classes: `config/OpenApiConfig` (API info, servers, bearer scheme) and `config/ObservabilityConfig` (drops actuator/Eureka noise from traces). config-server and eureka-server add only the Prometheus registry. See [OBSERVABILITY.md](OBSERVABILITY.md) and [API_DOCUMENTATION.md](API_DOCUMENTATION.md#swagger--openapi).
 
 ---
 
@@ -16,11 +30,11 @@ Organized by module. Line numbers refer to the workspace state at documentation 
 
 **Entry:** `ConfigServerApplication` with `@EnableConfigServer`.
 
-**Security:** `SecurityConfig` requires authentication for all requests; CSRF disabled. Credentials from `spring.security.user.name` / `password`.
+**Security:** `SecurityConfig` requires HTTP Basic for all requests except `/actuator/health/**`, `/actuator/info`, `/actuator/prometheus`; CSRF disabled. Credentials from `spring.security.user.name` / `password`.
 
 **Backend:** Git URI `https://github.com/HindiCodeClass/banking-config-repo`, branch `main`, `clone-on-start: true`, timeout 10s.
 
-**Actuator:** health, info, metrics exposed.
+**Actuator:** health, info, metrics, prometheus exposed.
 
 ---
 
@@ -40,7 +54,8 @@ Organized by module. Line numbers refer to the workspace state at documentation 
 
 | Class | Role |
 |-------|------|
-| `SecurityConfig` | Permits `/public/**`, `/kyc/callback`; `/api/admin/**` needs `ROLE_ADMIN`; else authenticated JWT; authorities from claim `authorities` with empty prefix |
+| `SecurityConfig` | Permits `/public/**`, `/kyc/callback`, actuator, Swagger UI and `/docs/**`; `/api/admin/**` needs `ROLE_ADMIN`; else authenticated JWT; authorities from claim `authorities` with empty prefix |
+| `OpenApiDocsRoutesConfig` | Java routes `/docs/{svc}/v3/api-docs` → `lb://<service>/v3/api-docs` for the aggregated Swagger UI |
 | `CorrelationIdFilter` | Order -2; sets `X-Correlation-Id` if absent |
 | `BankingRequestLoggingFilter` | Order -1; logs method/path; sets `X-Request-id` |
 | `UserKeyResolver` | KeyResolver using `X-User-Id` or client IP |

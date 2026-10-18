@@ -154,7 +154,9 @@ Direct service calls (bypassing gateway) are also possible on published ports; g
 4. Domain services (auth depends on postgres-auth, redis, eureka)
 5. `api-gateway` (depends_on domain services; imports config)
 
-Actual readiness/health waits are **not** configured (`depends_on` only). Kafka/Zookeeper network attachment is incomplete — see [KNOWN_ISSUES_AND_IMPROVEMENTS.md](KNOWN_ISSUES_AND_IMPROVEMENTS.md).
+Only config-server has a healthcheck; api-gateway waits for it (`condition: service_healthy`). Other services use plain `depends_on` ordering. All containers, including Kafka/Zookeeper, share `banking-network`.
+
+Observability containers (Prometheus, Tempo, Grafana) run alongside the services — see [OBSERVABILITY.md](OBSERVABILITY.md).
 
 ## Architectural limitations and improvements
 
@@ -163,8 +165,7 @@ Actual readiness/health waits are **not** configured (`depends_on` only). Kafka/
 3. **Ephemeral RSA JWK** in auth-service invalidates tokens on restart.
 4. **External gateway config** reduces reproducibility of this repo alone.
 5. **No Kafka consumers** — events are fire-and-forget.
-6. **Parent POM typo** (`customer-server`) breaks reactor builds.
-7. Prefer consolidating secrets into env/secret managers; remove plaintext from YAML and `kb/secrets`.
+6. Prefer consolidating secrets into env/secret managers; remove plaintext from YAML and `kb/secrets`.
 
 ## Related documents
 

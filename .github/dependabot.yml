@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: maven
+    directories:
+      - /banking-system-parent
+      - /config-server
+      - /eureka-server
+      - /auth-service
+      - /customer-service
+      - /account-service
+      - /transaction-service
+      - /api-gateway
+    schedule:
+      interval: weekly
+    groups:
+      spring:
+        patterns: ["org.springframework*", "io.micrometer*", "io.opentelemetry*", "org.springdoc*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: docker
+    directories:
+      - /config-server
+      - /eureka-server
+      - /auth-service
+      - /customer-service
+      - /account-service
+      - /transaction-service
+      - /api-gateway
+    schedule:
+      interval: monthly

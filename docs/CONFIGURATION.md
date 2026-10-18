@@ -142,6 +142,31 @@ Values shown as placeholders. **Do not copy real secrets from YAML into docs or 
 | Resilience4j `accountService` instance | CB/retry/bulkhead/timelimiter | Configured in YAML | window 10, 50% failure, 30s open, 5s TL, 3 retries, bulkhead 20 |
 | Eureka | Discovery | Yes | Eureka URL |
 
+## Observability, API docs and image settings
+
+Shared by auth, customer, account, transaction services and api-gateway (`application.yml`):
+
+| Key | Env override | Default | Notes |
+|-----|--------------|---------|-------|
+| `management.endpoints.web.exposure.include` | | `health,info,metrics,prometheus` | gateway also `gateway`, but remote `api-gateway-dev.yml` overrides to `health,info,prometheus` |
+| `management.metrics.tags.application` | | `${spring.application.name}` | Label used by dashboards |
+| `management.metrics.distribution.percentiles-histogram.http.server.requests` | | `true` | Enables latency histograms |
+| `management.tracing.sampling.probability` | `TRACING_SAMPLING_PROBABILITY` | `1.0` | Lower in production |
+| `management.otlp.tracing.endpoint` | `OTLP_TRACING_ENDPOINT` | `http://tempo:4318/v1/traces` | Use `http://localhost:4318/v1/traces` outside Docker |
+| `spring.kafka.template.observation-enabled` | | `true` | account / transaction only — propagates trace context in Kafka headers |
+| `spring.reactor.context-propagation` | | `auto` | gateway only — keeps trace IDs in reactive logs |
+| `springdoc.swagger-ui.urls` | | 4 service specs | gateway only — aggregated Swagger UI |
+
+Docker Compose variables (all optional):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `IMAGE_PREFIX` | `neobank` | Image name prefix; set to `ghcr.io/<owner>/neobank` to run CI-published images |
+| `IMAGE_TAG` | `latest` | Image tag, e.g. `sha-abc1234` or `1.2.3` |
+| `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` | Grafana defaults | Grafana admin login — set your own outside local dev |
+
+GitHub Actions configuration (variables `DEPLOY_HOST`, `DEPLOY_PATH`; secrets `DEPLOY_USER`, `DEPLOY_SSH_KEY`) is described in [CI_CD.md](CI_CD.md).
+
 ## Kubernetes ConfigMap / Secret (`kb/`)
 
 ConfigMap `banking-config` keys:

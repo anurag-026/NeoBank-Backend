@@ -16,15 +16,19 @@ import com.bank.account.entity.Account;
 import com.bank.account.repository.AccountRepository;
 import com.bank.account.service.AccountService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/accounts")
 @RequiredArgsConstructor
+@Tag(name = "Accounts", description = "Account opening and internal balance operations")
 public class AccountController {
 private final AccountService service;
 private final AccountRepository accountRepository;
+@Operation(summary = "Open a new account", description = "Requires the CREATE_ACCOUNT authority")
 @PreAuthorize("hasAuthority('CREATE_ACCOUNT')")
 @PostMapping
 public AccountResponse create(@RequestBody CreateAccountRequest request, HttpServletRequest httpRequest) {
@@ -32,6 +36,7 @@ public AccountResponse create(@RequestBody CreateAccountRequest request, HttpSer
 	String deviceId = httpRequest.getHeader("X-Device-Id");
 	return service.accountCreate(request, ip, deviceId);
 }
+@Operation(summary = "Get account number, balance and status", description = "Service-to-service endpoint")
 @GetMapping("/internal")
 public AccountDto getAccountInternal(@RequestParam String accountNumber) {
     Account account = accountRepository.findByAccountNumber(accountNumber)
@@ -43,6 +48,7 @@ public AccountDto getAccountInternal(@RequestParam String accountNumber) {
         .build();
 }
 
+@Operation(summary = "Overwrite an account balance", description = "Service-to-service endpoint used by transaction-service")
 @PostMapping("/internal/update-balance")
 public void updateBalance(@RequestBody BalanceUpdateRequest request) {
     Account account = accountRepository.findByAccountNumber(request.getAccountNumber())

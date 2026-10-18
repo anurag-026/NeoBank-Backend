@@ -1,5 +1,7 @@
 # NeoBank
 
+[![CI/CD](https://github.com/anurag-026/NeoBank-Backend/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/anurag-026/NeoBank-Backend/actions/workflows/ci-cd.yml)
+
 NeoBank is a **Spring Boot / Spring Cloud** microservices backend for digital banking: authentication with OTP and JWT, customer onboarding & KYC, account management, and debit/credit transactions.
 
 ## Architecture
@@ -43,6 +45,9 @@ NeoBank is a **Spring Boot / Spring Cloud** microservices backend for digital ba
 - Account opening with generated account numbers
 - Debit and credit transactions with idempotency (`referenceId`) and reversal
 - API Gateway routes under `/api/**` (see [docs](docs/))
+- **Swagger UI / OpenAPI 3** for every service, aggregated at the gateway
+- **Prometheus** metrics, **Grafana Tempo** distributed tracing and a provisioned **Grafana** dashboard
+- **GitHub Actions** CI/CD: build + test every module, publish Docker images to GHCR, optional SSH deploy
 - Docker Compose stack for local development
 
 ## Tech stack
@@ -57,7 +62,10 @@ NeoBank is a **Spring Boot / Spring Cloud** microservices backend for digital ba
 | Messaging | Apache Kafka |
 | Clients | OpenFeign, WebClient |
 | Resilience | Resilience4j |
+| API docs | springdoc-openapi 2.8 (Swagger UI) |
+| Observability | Micrometer, Prometheus, OpenTelemetry (OTLP), Grafana Tempo, Grafana |
 | Build | Maven |
+| CI/CD | GitHub Actions, GitHub Container Registry |
 | Runtime | Docker Compose (optional Kubernetes manifests in `kb/`) |
 
 ## Prerequisites
@@ -68,7 +76,20 @@ NeoBank is a **Spring Boot / Spring Cloud** microservices backend for digital ba
 - Config Server Git repository reachable for gateway routes (see `config-server`)
 - Optional: SMTP + Twilio (OTP), Setu sandbox credentials (KYC)
 
-## Quick start
+## Frontend
+
+A React (Vite) banking UI lives in [`frontend/`](frontend/).
+
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Open http://localhost:5173 (dev server proxies auth + gateway to avoid CORS). Details: [frontend/README.md](frontend/README.md).
+
+## Quick start (backend)
 
 ### 1. Clone
 
@@ -104,6 +125,12 @@ docker compose up --build
 | Customer Service | http://localhost:8082 |
 | Account Service | http://localhost:8083 |
 | Transaction Service | http://localhost:8084 |
+| Swagger UI (all services) | http://localhost:8080/swagger-ui.html |
+| Prometheus | http://localhost:9090 |
+| Grafana (dashboards, traces) | http://localhost:3000 |
+| Tempo API | http://localhost:3200 |
+
+The Spring services must be packaged first (`mvn package` in each module) because each Dockerfile copies `target/*.jar`.
 
 ### 4. Build a single service (example)
 
@@ -113,7 +140,33 @@ cd auth-service
 .\mvnw.cmd clean package -DskipTests      # Windows
 ```
 
-> Prefer building modules individually. The parent POM module path for customer-service may need alignment before a full reactor build.
+## API documentation (Swagger)
+
+Every Spring service publishes an OpenAPI 3 spec at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`. The gateway aggregates them:
+
+- **http://localhost:8080/swagger-ui.html** — pick a service from the *Select a definition* dropdown. Choose the **"Through API Gateway"** server to send requests via `/api/**`.
+- Direct per-service UIs: `http://localhost:{9000|8082|8083|8084}/swagger-ui.html`.
+
+Click **Authorize** and paste an access token from `POST /oauth2/token` to call protected endpoints. See [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md#swagger--openapi).
+
+## Monitoring (Prometheus, Tempo, Grafana)
+
+- Every service exposes Micrometer metrics at `/actuator/prometheus`; Prometheus scrapes them every 15 s.
+- Every request is traced with Micrometer Tracing (OpenTelemetry bridge) and exported over OTLP to **Tempo**. Trace context propagates through the gateway, Feign calls and Kafka messages.
+- Log lines carry `[traceId,spanId]`, so a log entry can be looked up in Tempo.
+- Grafana is provisioned with Prometheus + Tempo data sources and a **NeoBank - Services Overview** dashboard (request rate, p95 latency, errors, JVM, DB pool, circuit breaker, service graph).
+
+Details: [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
+
+## CI/CD
+
+[`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) runs on pushes and pull requests to `main`/`develop`:
+
+1. **CI** — `mvn verify` for each of the 7 services (matrix), frontend lint/test/build, Compose + Prometheus config validation.
+2. **CD** (push to `main` or a `v*.*.*` tag) — builds Docker images from the CI JARs and pushes them to `ghcr.io/<owner>/neobank-<service>`.
+3. **Deploy** (optional) — if the `DEPLOY_HOST` variable is configured, pulls the new images on a server over SSH and restarts Docker Compose.
+
+Details and required secrets: [docs/CI_CD.md](docs/CI_CD.md).
 
 ## Typical API flow
 
@@ -142,6 +195,9 @@ NeoBank/
 ├── eureka-server/         # Discovery
 ├── config-server/         # Central config
 ├── banking-system-parent/ # Shared Maven parent / BOM
+├── frontend/              # React (Vite) banking UI
+├── observability/         # Prometheus, Tempo and Grafana config
+├── .github/               # GitHub Actions workflows, Dependabot
 ├── kb/                    # Partial Kubernetes manifests
 ├── docs/                  # Technical documentation
 ├── docker-compose.yml
@@ -161,6 +217,8 @@ NeoBank/
 | [docs/SETUP_AND_DEPLOYMENT.md](docs/SETUP_AND_DEPLOYMENT.md) | Setup, deploy, troubleshooting |
 | [docs/WORKFLOWS.md](docs/WORKFLOWS.md) | End-to-end flows |
 | [docs/TECHNICAL_DOCUMENTATION.md](docs/TECHNICAL_DOCUMENTATION.md) | Module implementation notes |
+| [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Metrics, tracing, dashboards |
+| [docs/CI_CD.md](docs/CI_CD.md) | GitHub Actions pipeline and deployment |
 | [docs/external-config/](docs/external-config/) | Sample Config Server YAML mirrors |
 
 ## Contributing

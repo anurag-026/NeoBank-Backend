@@ -5,8 +5,8 @@ spring:
     name: customer-service
   datasource:
     url: jdbc:postgresql://postgres-customer:5432/customerdb
-    username: db_username
-    password: db_password
+    username: postgres
+    password: root
   jpa:
     hibernate:
       ddl-auto: update
@@ -28,6 +28,27 @@ eureka:
   client:
     service-url:
       defaultZone: http://eureka-server:8761/eureka
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACING_ENDPOINT:http://tempo:4318/v1/traces}
+springdoc:
+  swagger-ui:
+    operations-sorter: method
+    tags-sorter: alpha
 setu:
   base-url: https://dg-sandbox.setu.co
   client-id: fdd87fgdfg-fdjgdfg768sd-ds6f5dsfs-vbc87fdg7s

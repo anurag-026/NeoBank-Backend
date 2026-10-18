@@ -32,17 +32,19 @@ docker compose up --build
 2. Ensure config-server can clone `banking-config-repo` (network + credentials if private). Expected files include `api-gateway-dev.yml` (see `docs/external-config/`).
 3. Align config-server Basic auth with api-gateway `spring.cloud.config.username/password`.
 4. Configure Twilio/SMTP/Setu or expect OTP/KYC proxy failures.
-5. Be aware of known Kafka network issue (below).
-6. For auth login/token and user register, call **auth-service `:9000` directly** until gateway `StripPrefix` on `/auth/**` and `/oauth2/**` is fixed. Use gateway for `/api/accounts`, `/api/transactions`, `/api/customers`, `/api/kyc`.
+5. For auth login/token and user register, call **auth-service `:9000` directly** until gateway `StripPrefix` on `/auth/**` and `/oauth2/**` is fixed. Use gateway for `/api/accounts`, `/api/transactions`, `/api/customers`, `/api/kyc`.
 
 ### Verify
 
 | Check | URL / command |
 |-------|----------------|
 | Eureka UI | http://localhost:8761 |
-| Config server health | http://localhost:8888/actuator/health (Basic auth) |
+| Config server health | http://localhost:8888/actuator/health |
 | Gateway | http://localhost:8080 |
 | Auth JWKS | http://localhost:9000/oauth2/jwks |
+| Swagger UI (aggregated) | http://localhost:8080/swagger-ui.html |
+| Prometheus targets | http://localhost:9090/targets |
+| Grafana dashboard | http://localhost:3000/d/neobank-services |
 
 ## Local development — Maven per service
 
@@ -61,7 +63,7 @@ java -jar target\auth-service-0.0.1-SNAPSHOT.jar
 
 Adjust JAR names per module (`api-gateway-1.0.0.jar` vs `*-0.0.1-SNAPSHOT.jar` as defined in each POM/Dockerfile).
 
-**Parent reactor caveat:** `banking-system-parent` lists module `../customer-server` which does not exist — prefer per-module builds.
+The parent POM (`banking-system-parent`) lists all seven modules and manages the springdoc version; per-module builds remain the documented path (CI builds each module separately).
 
 ## Database setup
 
@@ -129,9 +131,13 @@ Missing manifests for gateway, eureka, config-server, customer, account, transac
 
 ## Health checks
 
-- config-server / eureka expose Actuator to varying degrees
-- Domain services permit `/actuator/**` in security configs but **may lack** actuator dependency on classpath — treat availability as **unverified**
-- Compose has no healthcheck blocks
+- Every service exposes `/actuator/health`, `/actuator/info`, `/actuator/metrics` and `/actuator/prometheus` (see [OBSERVABILITY.md](OBSERVABILITY.md))
+- Compose defines a healthcheck for **config-server**; api-gateway waits for it to be healthy so it loads its remote routes on first start
+- Other services start in dependency order only (no healthchecks yet)
+
+## CI/CD
+
+GitHub Actions builds, tests, publishes images to GHCR and optionally deploys over SSH. See [CI_CD.md](CI_CD.md).
 
 ## Troubleshooting
 
@@ -141,13 +147,9 @@ Missing manifests for gateway, eureka, config-server, customer, account, transac
 | JWT invalid after auth restart | Ephemeral JWK regenerated |
 | OTP never arrives | Twilio/SMTP secrets invalid; check logs |
 | customer-service cannot connect DB | Username/password mismatch vs Compose; missing `depends_on` postgres-customer |
-| Kafka producer errors from account/txn | Kafka/ZK not on `banking-network` in Compose |
-| Flyway failure on account-service | Duplicate `V2` migration scripts |
+| Kafka producer errors from account/txn | Kafka not started yet, or containers created from an older Compose file without `banking-network` — `docker compose up -d --force-recreate kafka zookeeper` |
+| Flyway "more than one migration with version 2" | Stale `target/` classes — run `mvn clean package` |
 | transaction-service validate fail | `TransactionAudit` table name mismatch |
 | KYC always REJECTED | Setu calls commented in `KycService.submitKyc` |
 | Feign 401 | Missing/forwarded Authorization; JWKS unreachable |
-| Parent `mvn` fails | `customer-server` module path typo |
-
-## Common Compose networking fix (recommended)
-
-Attach `kafka` and `zookeeper` to `banking-network` (and ensure advertised listeners match). This change is **not** applied by the documentation task; apply manually if you authorize Compose edits.
+| Prometheus target down / no traces | See [OBSERVABILITY.md](OBSERVABILITY.md#troubleshooting) |

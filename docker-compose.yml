@@ -1,4 +1,6 @@
-version: '3.8'
+# Images default to local builds (neobank-<service>:latest). For deployments,
+# set IMAGE_PREFIX=ghcr.io/<owner>/neobank and IMAGE_TAG=<tag> to run the
+# images published by the CD workflow (docker compose pull && docker compose up -d --no-build).
 
 services:
   zookeeper:
@@ -9,84 +11,8 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
-  redis: 
-    image: redis:8 
-    container_name: redis 
-    ports: 
-      - "6379:6379" 
-    networks: 
+    networks:
       - banking-network
-
-  config-server: 
-    build: ./config-server 
-    ports: 
-      - "8888:8888" 
-    networks: 
-      - banking-network
-
-  eureka-server: 
-    build: ./eureka-server 
-    ports: 
-      - "8761:8761" 
-    depends_on: 
-      - config-server 
-    networks: 
-      - banking-network
-
-  auth-service: 
-    build: ./auth-service 
-    ports: 
-      - "9000:9000" 
-    depends_on: 
-      - postgres-auth 
-      - redis 
-      - eureka-server 
-    networks: 
-      - banking-network
-
-  customer-service: 
-    build: ./customer-service 
-    ports: 
-      - "8082:8082" 
-    depends_on: 
-      - redis 
-      - eureka-server 
-    networks: 
-      - banking-network
-
-  account-service: 
-    build: ./account-service 
-    ports: 
-      - "8083:8083" 
-    depends_on: 
-      - kafka 
-      - redis 
-      - eureka-server 
-    networks: 
-      - banking-network
-
-  transaction-service: 
-    build: ./transaction-service 
-    ports: 
-      - "8084:8084" 
-    depends_on: 
-      - kafka 
-      - eureka-server 
-    networks: 
-      - banking-network
-
-  api-gateway: 
-    build: ./api-gateway 
-    ports: 
-      - "8080:8080" 
-    depends_on: 
-      - auth-service 
-      - customer-service 
-      - account-service 
-      - transaction-service 
-    networks: 
-      - banking-network
-
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -103,27 +29,167 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - banking-network
 
-  #logstash:
-   # image: docker.elastic.co/logstash/logstash:8.15.0
-  #  ports:
-   #    - "5000:5000"
- #    volumes:
- #      - ./logstash.config:/usr/share/logstash/pipeline/logstash.config
- #  elasticsearch:
- #    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
-  #   environment:
-  #     - discovery.type=single-node
- #      - xpack.security.enabled=false
- #    ports:
-  #     - "9200:9200"
- #  kibana: 
- #    image: docker.elastic.co/kibana/kibana:8.15.0 
-#     ports: 
- #      - "5601:5601" 
- #    environment: 
- #      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+  redis:
+    image: redis:8
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - banking-network
 
+  config-server:
+    image: ${IMAGE_PREFIX:-neobank}-config-server:${IMAGE_TAG:-latest}
+    build: ./config-server
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8888/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - banking-network
+
+  eureka-server:
+    image: ${IMAGE_PREFIX:-neobank}-eureka-server:${IMAGE_TAG:-latest}
+    build: ./eureka-server
+    ports:
+      - "8761:8761"
+    depends_on:
+      - config-server
+    networks:
+      - banking-network
+
+  auth-service:
+    image: ${IMAGE_PREFIX:-neobank}-auth-service:${IMAGE_TAG:-latest}
+    build: ./auth-service
+    ports:
+      - "9000:9000"
+    depends_on:
+      - postgres-auth
+      - redis
+      - eureka-server
+      - tempo
+    networks:
+      - banking-network
+
+  customer-service:
+    image: ${IMAGE_PREFIX:-neobank}-customer-service:${IMAGE_TAG:-latest}
+    build: ./customer-service
+    ports:
+      - "8082:8082"
+    depends_on:
+      - postgres-customer
+      - redis
+      - eureka-server
+      - tempo
+    networks:
+      - banking-network
+
+  account-service:
+    image: ${IMAGE_PREFIX:-neobank}-account-service:${IMAGE_TAG:-latest}
+    build: ./account-service
+    ports:
+      - "8083:8083"
+    depends_on:
+      - postgres-account
+      - kafka
+      - redis
+      - eureka-server
+      - tempo
+    networks:
+      - banking-network
+
+  transaction-service:
+    image: ${IMAGE_PREFIX:-neobank}-transaction-service:${IMAGE_TAG:-latest}
+    build: ./transaction-service
+    ports:
+      - "8084:8084"
+    depends_on:
+      - postgres-transaction
+      - kafka
+      - eureka-server
+      - tempo
+    networks:
+      - banking-network
+
+  api-gateway:
+    image: ${IMAGE_PREFIX:-neobank}-api-gateway:${IMAGE_TAG:-latest}
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      config-server:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      customer-service:
+        condition: service_started
+      account-service:
+        condition: service_started
+      transaction-service:
+        condition: service_started
+      tempo:
+        condition: service_started
+    networks:
+      - banking-network
+
+  # ---------------------------------------------------------------- observability
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-remote-write-receiver
+      - --enable-feature=exemplar-storage
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - banking-network
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: tempo
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./observability/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+    ports:
+      - "3200:3200"   # Tempo HTTP API (queried by Grafana)
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    networks:
+      - banking-network
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - tempo
+    networks:
+      - banking-network
+
+  # ---------------------------------------------------------------- databases
   postgres-account:
     image: postgres:17.9
     container_name: postgres-account
@@ -185,6 +251,9 @@ volumes:
   pgdata-customer:
   pgdata-auth:
   pgdata-transaction:
+  prometheus-data:
+  grafana-data:
+
 networks:
   banking-network:
     driver: bridge

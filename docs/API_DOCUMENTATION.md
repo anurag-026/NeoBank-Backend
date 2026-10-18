@@ -12,6 +12,30 @@ Authorization: Bearer <access_token>
 
 JWT authorities are read from claim `authorities` (no extra `ROLE_` prefix added by converters).
 
+## Swagger / OpenAPI
+
+Generated at runtime by [springdoc-openapi](https://springdoc.org/) 2.8 from the controllers (`@Tag` / `@Operation` annotations) and an `OpenApiConfig` bean in each service.
+
+| UI / spec | URL |
+|-----------|-----|
+| **Aggregated Swagger UI** (gateway) | http://localhost:8080/swagger-ui.html |
+| auth-service | http://localhost:9000/swagger-ui.html · spec `/v3/api-docs` |
+| customer-service | http://localhost:8082/swagger-ui.html · spec `/v3/api-docs` |
+| account-service | http://localhost:8083/swagger-ui.html · spec `/v3/api-docs` |
+| transaction-service | http://localhost:8084/swagger-ui.html · spec `/v3/api-docs` |
+
+How the gateway aggregation works:
+
+- `OpenApiDocsRoutesConfig` (api-gateway) adds routes `/docs/{auth|customer|account|transaction}/v3/api-docs` → `lb://<service>/v3/api-docs`.
+- `springdoc.swagger-ui.urls` in the gateway `application.yml` lists those four specs in the *Select a definition* dropdown.
+- Each spec declares the servers **"Through API Gateway"** (`/api`) and **"<service> (direct)"** (`/`). Relative server URLs resolve against where the spec was loaded, so on the gateway UI `/api` targets `http://localhost:8080/api/...`. auth-service only declares the direct server because the gateway `/auth/**` route strips the wrong segment (see below).
+
+Authorizing: every spec defines an HTTP **bearer (JWT)** scheme `bearerAuth`. Obtain a token from `POST http://localhost:9000/oauth2/token` (`grant_type=otp`, see [auth-service](#auth-service-9000)), click **Authorize**, and paste the raw token. Public endpoints (`/user/register`, `/auth/**`) are marked without a security requirement.
+
+The OAuth2 endpoints (`/oauth2/token`, `/oauth2/jwks`, …) are served by Spring Authorization Server filters, not controllers, so they are not in the generated spec; they are documented further down this page.
+
+Security: `/v3/api-docs/**`, `/swagger-ui/**` and `/swagger-ui.html` are permitted without a token in every service (and `/docs/**`, `/webjars/**` on the gateway). Disable the UI in production with `springdoc.swagger-ui.enabled=false` / `springdoc.api-docs.enabled=false` if the API surface should not be public.
+
 ## Client paths via api-gateway (`:8080`)
 
 Source: `api-gateway-dev.yml` (Config Server / `dev` profile).
@@ -326,7 +350,7 @@ Errors: txn not found; only SUCCESS can be reversed.
 
 ## api-gateway (`:8080`)
 
-No `@RestController` endpoints in the module. Runtime routes, JWT JWK URI, Redis, Eureka client, rate limiter, and Actuator exposure come from `api-gateway-dev.yml` (see [Client paths via api-gateway](#client-paths-via-api-gateway-8080) and [external-config/api-gateway-dev.yml](external-config/api-gateway-dev.yml)).
+No `@RestController` endpoints in the module. Besides the OpenAPI doc routes (`/docs/*/v3/api-docs`, defined in Java) and the aggregated Swagger UI, runtime routes, JWT JWK URI, Redis, Eureka client, rate limiter, and Actuator exposure come from `api-gateway-dev.yml` (see [Client paths via api-gateway](#client-paths-via-api-gateway-8080) and [external-config/api-gateway-dev.yml](external-config/api-gateway-dev.yml)).
 
 | Setting | Value in `api-gateway-dev.yml` |
 |---------|--------------------------------|
@@ -340,7 +364,7 @@ No `@RestController` endpoints in the module. Runtime routes, JWT JWK URI, Redis
 
 ## config-server (`:8888`)
 
-HTTP Basic for all requests. Serves Spring Cloud Config properties from Git. Actuator: `/actuator/health`, `/actuator/info`, `/actuator/metrics` (still behind Basic auth per security config).
+HTTP Basic for all requests except `/actuator/health`, `/actuator/info` and `/actuator/prometheus` (public for health checks and Prometheus). Serves Spring Cloud Config properties from Git. `/actuator/metrics` stays behind Basic auth.
 
 ## eureka-server (`:8761`)
 

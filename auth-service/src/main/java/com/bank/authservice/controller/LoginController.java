@@ -18,12 +18,17 @@ import com.bank.authservice.service.OtpService;
 import com.bank.authservice.service.SmsService;
 import com.bank.authservice.service.UserService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
+@Tag(name = "Login", description = "Password verification and OTP dispatch (step 1 of login)")
+@SecurityRequirements
 public class LoginController {
 
     private final LoginFailureEventListener loginFailureEventListener;
@@ -36,14 +41,19 @@ public class LoginController {
 	private final EmailService emailService;
 
    
+	@Operation(summary = "Record a successful login in the audit log")
 	@PostMapping("/login-success")
 	public void loginSuccess(@RequestParam String userName,HttpServletRequest request) {
 		auditService.logSuccess(userName, request.getRemoteAddr());
 	}
+	@Operation(summary = "Record a failed login in the audit log")
 	@PostMapping("/login-failure")
 	public void loginFailure(@RequestParam String userName, @RequestParam String reason,HttpServletRequest request) {
 		auditService.logFailure(userName, request.getRemoteAddr(), reason);
 	}
+	@Operation(summary = "Verify username/password and send an OTP",
+			description = "Locks the account for 15 minutes after 5 failed attempts. "
+					+ "Exchange the OTP for tokens at POST /oauth2/token with grant_type=otp.")
 	@PostMapping("/login")
 	public ResponseEntity<?> login(@RequestParam String userName, @RequestParam String password, HttpServletRequest request){
 		User user = userService.findByUserName(userName);
