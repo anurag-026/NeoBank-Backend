@@ -1,0 +1,77 @@
+# Mirrored from banking-config-repo (user-supplied). Not loaded from this path at runtime.
+# Runtime source: Spring Cloud Config Server → Git repo referenced by config-server.
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://auth-service:9000/oauth2/jwks
+
+  data:
+    redis:
+      host: redis
+      port: 6379
+
+  cloud:
+    gateway:
+      default-filters:
+        - name: RequestRateLimiter
+          args:
+            redis-rate-limiter.replenishRate: 5
+            redis-rate-limiter.burstCapacity: 10
+
+      routes:
+        - id: account-service
+          uri: lb://ACCOUNT-SERVICE
+          predicates:
+            - Path=/api/accounts/**
+          filters:
+            - StripPrefix=1
+
+        - id: transaction-service
+          uri: lb://TRANSACTION-SERVICE
+          predicates:
+            - Path=/api/transactions/**
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: transactionCB
+                fallbackUri: forward:/fallback/transaction
+
+        - id: auth-service
+          uri: lb://AUTH-SERVICE
+          predicates:
+            - Path=/auth/**,/oauth2/**
+          filters:
+            - StripPrefix=1
+
+        - id: customer-service
+          uri: lb://CUSTOMER-SERVICE
+          predicates:
+            - Path=/api/customers/**, /api/kyc/**
+          filters:
+            - StripPrefix=1
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    com.bank.apigateway: DEBUG

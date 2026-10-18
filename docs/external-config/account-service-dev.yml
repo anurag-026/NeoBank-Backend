@@ -1,0 +1,21 @@
+# Mirrored from banking-config-repo (user-supplied). Not loaded from this path at runtime.
+# Note: account-service in this repo does not import config-server in its local application.yml;
+# this file applies only if the service is configured as a config client with profile `dev`.
+
+server:
+  port: 8082
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/account_db
+    username: account_user
+    password: account_pwd
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+redis:
+  host: localhost
+  port: 6379

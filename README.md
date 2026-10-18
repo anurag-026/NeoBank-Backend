@@ -1,0 +1,174 @@
+# NeoBank
+
+NeoBank is a **Spring Boot / Spring Cloud** microservices backend for digital banking: authentication with OTP and JWT, customer onboarding & KYC, account management, and debit/credit transactions.
+
+## Architecture
+
+```text
+                    ┌─────────────────┐
+                    │  API Gateway    │  :8080
+                    │  (JWT, rate     │
+                    │   limit, routes)│
+                    └────────┬────────┘
+           ┌─────────────────┼─────────────────┐
+           ▼                 ▼                 ▼
+    ┌────────────┐   ┌────────────┐   ┌────────────────┐
+    │ Customer   │   │ Account    │   │ Transaction    │
+    │ :8082      │◄──│ :8083      │◄──│ :8084          │
+    └────────────┘   └─────┬──────┘   └────────────────┘
+                           │ Kafka / Redis
+    ┌────────────┐   ┌─────┴──────┐   ┌────────────────┐
+    │ Auth       │   │ Eureka     │   │ Config Server  │
+    │ :9000      │   │ :8761      │   │ :8888          │
+    └────────────┘   └────────────┘   └────────────────┘
+           │
+      PostgreSQL × 4   Redis   Kafka
+```
+
+| Service | Role |
+|---------|------|
+| **api-gateway** | Edge routing, JWT validation, rate limiting |
+| **auth-service** | Registration, login, OTP, OAuth2 JWT, RBAC |
+| **customer-service** | Customer profiles, KYC, Setu sandbox proxies |
+| **account-service** | Account creation, balance APIs, Redis, Kafka events |
+| **transaction-service** | Debit/credit processing, Resilience4j, Kafka events |
+| **eureka-server** | Service discovery |
+| **config-server** | Centralized configuration (Git-backed) |
+
+## Features
+
+- User registration and password login with **OTP** (Redis) and **JWT** (`grant_type=otp`)
+- Role / permission administration (RBAC)
+- Customer onboarding and KYC endpoints (Setu sandbox integration)
+- Account opening with generated account numbers
+- Debit and credit transactions with idempotency (`referenceId`) and reversal
+- API Gateway routes under `/api/**` (see [docs](docs/))
+- Docker Compose stack for local development
+
+## Tech stack
+
+| Area | Choice |
+|------|--------|
+| Language | Java **21** |
+| Framework | Spring Boot **3.4.10**, Spring Cloud **2024.0.0** |
+| Security | Spring Security, OAuth2 Authorization Server, JWT |
+| Data | PostgreSQL, Spring Data JPA, Flyway |
+| Cache / locks | Redis, Redisson |
+| Messaging | Apache Kafka |
+| Clients | OpenFeign, WebClient |
+| Resilience | Resilience4j |
+| Build | Maven |
+| Runtime | Docker Compose (optional Kubernetes manifests in `kb/`) |
+
+## Prerequisites
+
+- [JDK 21](https://adoptium.net/)
+- [Maven 3.9+](https://maven.apache.org/) (or use each module’s `mvnw` / `mvnw.cmd`)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (recommended)
+- Config Server Git repository reachable for gateway routes (see `config-server`)
+- Optional: SMTP + Twilio (OTP), Setu sandbox credentials (KYC)
+
+## Quick start
+
+### 1. Clone
+
+```bash
+git clone <your-repo-url>.git
+cd NeoBank
+```
+
+### 2. Configure secrets
+
+Do **not** commit real credentials. Update each service’s `application.yml` (or use environment variables / a secrets manager) for:
+
+- PostgreSQL username & password  
+- Redis / Kafka hosts (Compose service names work inside Docker)  
+- SMTP & Twilio (auth OTP)  
+- Setu client credentials (customer KYC)  
+- Config Server / gateway Basic auth  
+
+Kubernetes sample secrets under `kb/secrets/` are gitignored — create them locally from your own values.
+
+### 3. Run with Docker Compose
+
+```bash
+docker compose up --build
+```
+
+| Endpoint | URL |
+|----------|-----|
+| API Gateway | http://localhost:8080 |
+| Eureka Dashboard | http://localhost:8761 |
+| Config Server | http://localhost:8888 |
+| Auth Service | http://localhost:9000 |
+| Customer Service | http://localhost:8082 |
+| Account Service | http://localhost:8083 |
+| Transaction Service | http://localhost:8084 |
+
+### 4. Build a single service (example)
+
+```bash
+cd auth-service
+./mvnw clean package -DskipTests          # Linux / macOS
+.\mvnw.cmd clean package -DskipTests      # Windows
+```
+
+> Prefer building modules individually. The parent POM module path for customer-service may need alignment before a full reactor build.
+
+## Typical API flow
+
+1. **Register** — `POST http://localhost:9000/user/register`  
+2. **Assign roles** (admin) — auth `/admin/**` APIs  
+3. **Login** — `POST http://localhost:9000/auth/login` → OTP via SMS/email  
+4. **Token** — `POST http://localhost:9000/oauth2/token` with `grant_type=otp`  
+5. **Call APIs** through the gateway with `Authorization: Bearer <token>`:
+   - `POST /api/customers`
+   - `POST /api/accounts`
+   - `POST /api/transactions`
+
+Gateway route details and request/response shapes: **[docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md)**.
+
+> Auth login and token endpoints are most reliable against **auth-service `:9000`** directly. Gateway `/auth/**` rewriting may strip path segments depending on Config Server YAML.
+
+## Project structure
+
+```text
+NeoBank/
+├── api-gateway/           # Spring Cloud Gateway
+├── auth-service/          # Identity & OAuth2
+├── customer-service/      # Customers & KYC
+├── account-service/       # Accounts
+├── transaction-service/   # Transactions
+├── eureka-server/         # Discovery
+├── config-server/         # Central config
+├── banking-system-parent/ # Shared Maven parent / BOM
+├── kb/                    # Partial Kubernetes manifests
+├── docs/                  # Technical documentation
+├── docker-compose.yml
+└── README.md
+```
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) | Scope and use cases |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture and diagrams |
+| [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) | REST & OAuth endpoints |
+| [docs/DATABASE_DOCUMENTATION.md](docs/DATABASE_DOCUMENTATION.md) | Schemas and migrations |
+| [docs/SECURITY.md](docs/SECURITY.md) | Authentication & authorization |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Configuration reference |
+| [docs/SETUP_AND_DEPLOYMENT.md](docs/SETUP_AND_DEPLOYMENT.md) | Setup, deploy, troubleshooting |
+| [docs/WORKFLOWS.md](docs/WORKFLOWS.md) | End-to-end flows |
+| [docs/TECHNICAL_DOCUMENTATION.md](docs/TECHNICAL_DOCUMENTATION.md) | Module implementation notes |
+| [docs/external-config/](docs/external-config/) | Sample Config Server YAML mirrors |
+
+## Contributing
+
+1. Fork the repository and create a feature branch.  
+2. Keep secrets out of commits (use `.env` / local overrides — already gitignored).  
+3. Open a pull request with a clear description of the change.
+
+## License
+
+Add a license file (for example MIT or Apache-2.0) before publishing if you intend others to reuse this code.
